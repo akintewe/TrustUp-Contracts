@@ -68,7 +68,6 @@ impl TestEnv {
     }
 }
 
-
 // ─── initialization ───────────────────────────────────────────────────────────
 
 #[test]
@@ -976,7 +975,9 @@ fn test_withdrawal_with_active_loans_exceeds_available_shares() {
     context
         .client()
         .fund_loan(&context.creditline, &merchant, &loan_amount);
-    context.client().withdraw(&provider, &first_withdrawal_shares);
+    context
+        .client()
+        .withdraw(&provider, &first_withdrawal_shares);
 
     // Now provider has 400 shares remaining, but available_liquidity is 0
     // Attempt to withdraw 500 shares (more than remaining) - should fail with InsufficientShares
@@ -1005,7 +1006,9 @@ fn test_withdrawal_with_active_loans_no_available_liquidity() {
     context
         .client()
         .fund_loan(&context.creditline, &merchant, &loan_amount);
-    context.client().withdraw(&provider, &first_withdrawal_shares);
+    context
+        .client()
+        .withdraw(&provider, &first_withdrawal_shares);
 
     // Now provider has 400 shares remaining, but available_liquidity is 0
     // Attempt to withdraw any amount when available_liquidity is 0 - should fail
@@ -1207,7 +1210,9 @@ fn test_share_value_appreciation_over_time() {
     // 6. Test that new depositors after interest get fewer shares per token
     let new_provider = Address::generate(&context.env);
     context.mint(&new_provider, new_provider_deposit);
-    let new_shares = context.client().deposit(&new_provider, &new_provider_deposit);
+    let new_shares = context
+        .client()
+        .deposit(&new_provider, &new_provider_deposit);
     // With empty pool, first deposit gets 1:1 ratio again
     assert_eq!(new_shares, expected_new_provider_shares);
 }

@@ -35,7 +35,6 @@ pub fn bump_lp_shares(env: &Env, provider: &Address) {
     );
 }
 
-
 // --- Admin ---
 
 pub fn get_admin(env: &Env) -> Address {
@@ -161,10 +160,7 @@ pub fn set_reentrancy_locked(env: &Env, locked: bool) {
 }
 
 pub fn is_paused(env: &Env) -> bool {
-    env.storage()
-        .instance()
-        .get(&PAUSED_KEY)
-        .unwrap_or(false)
+    env.storage().instance().get(&PAUSED_KEY).unwrap_or(false)
 }
 
 pub fn set_paused(env: &Env, paused: bool) {

@@ -562,7 +562,13 @@ impl CreditLineContract {
         let accrued_fee = Self::accrue_late_fees_internal(&env, &mut loan);
         if accrued_fee > 0 {
             storage::increase_user_active_debt(&env, &borrower, accrued_fee);
-            events::emit_late_fee_accrued(&env, &borrower, loan_id, accrued_fee, loan.remaining_balance);
+            events::emit_late_fee_accrued(
+                &env,
+                &borrower,
+                loan_id,
+                accrued_fee,
+                loan.remaining_balance,
+            );
         }
 
         if amount <= 0 || amount > loan.remaining_balance {
@@ -778,7 +784,13 @@ impl CreditLineContract {
 
         storage::increase_user_active_debt(&env, &loan.borrower, accrued_fee);
         storage::write_loan(&env, &loan);
-        events::emit_late_fee_accrued(&env, &loan.borrower, loan_id, accrued_fee, loan.remaining_balance);
+        events::emit_late_fee_accrued(
+            &env,
+            &loan.borrower,
+            loan_id,
+            accrued_fee,
+            loan.remaining_balance,
+        );
     }
 
     fn handle_reputation_increase(

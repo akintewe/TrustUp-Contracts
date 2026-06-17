@@ -2394,9 +2394,13 @@ fn test_no_late_fee_before_due_date() {
     let due_date = 50_000_u64;
     let schedule = t.single_installment(DEFAULT_TOTAL_DUE, due_date);
     t.mint(&user, DEFAULT_GUARANTEE);
-    let loan_id = t
-        .client
-        .create_loan(&user, &merchant, &DEFAULT_PRINCIPAL, &DEFAULT_GUARANTEE, &schedule);
+    let loan_id = t.client.create_loan(
+        &user,
+        &merchant,
+        &DEFAULT_PRINCIPAL,
+        &DEFAULT_GUARANTEE,
+        &schedule,
+    );
 
     let loan = t.client.get_loan(&loan_id);
     assert_eq!(loan.late_fees_outstanding, 0);
@@ -2415,9 +2419,13 @@ fn test_apply_late_fees_adds_fee_after_one_day_overdue() {
     let schedule = t.single_installment(DEFAULT_TOTAL_DUE, due_date);
     t.env.ledger().set_timestamp(0);
     t.mint(&user, DEFAULT_GUARANTEE);
-    let loan_id = t
-        .client
-        .create_loan(&user, &merchant, &DEFAULT_PRINCIPAL, &DEFAULT_GUARANTEE, &schedule);
+    let loan_id = t.client.create_loan(
+        &user,
+        &merchant,
+        &DEFAULT_PRINCIPAL,
+        &DEFAULT_GUARANTEE,
+        &schedule,
+    );
 
     // Advance 1 full day past due_date
     t.env.ledger().set_timestamp(due_date + SECONDS_PER_DAY);
@@ -2441,9 +2449,13 @@ fn test_apply_late_fees_accumulates_over_multiple_days() {
     let schedule = t.single_installment(DEFAULT_TOTAL_DUE, due_date);
     t.env.ledger().set_timestamp(0);
     t.mint(&user, DEFAULT_GUARANTEE);
-    let loan_id = t
-        .client
-        .create_loan(&user, &merchant, &DEFAULT_PRINCIPAL, &DEFAULT_GUARANTEE, &schedule);
+    let loan_id = t.client.create_loan(
+        &user,
+        &merchant,
+        &DEFAULT_PRINCIPAL,
+        &DEFAULT_GUARANTEE,
+        &schedule,
+    );
 
     t.env.ledger().set_timestamp(due_date + 3 * SECONDS_PER_DAY);
     t.client.apply_late_fees(&loan_id);
@@ -2465,9 +2477,13 @@ fn test_apply_late_fees_is_noop_within_same_day() {
     let schedule = t.single_installment(DEFAULT_TOTAL_DUE, due_date);
     t.env.ledger().set_timestamp(0);
     t.mint(&user, DEFAULT_GUARANTEE);
-    let loan_id = t
-        .client
-        .create_loan(&user, &merchant, &DEFAULT_PRINCIPAL, &DEFAULT_GUARANTEE, &schedule);
+    let loan_id = t.client.create_loan(
+        &user,
+        &merchant,
+        &DEFAULT_PRINCIPAL,
+        &DEFAULT_GUARANTEE,
+        &schedule,
+    );
 
     t.env.ledger().set_timestamp(due_date + SECONDS_PER_DAY);
     t.client.apply_late_fees(&loan_id);
@@ -2494,9 +2510,13 @@ fn test_apply_late_fees_incremental_across_two_calls() {
     // due_date == 0, so it's already overdue at creation time; first day starts at ledger 0
     // Advance ledger to 1 so due_date < now and create the loan
     t.env.ledger().set_timestamp(1);
-    let loan_id = t
-        .client
-        .create_loan(&user, &merchant, &DEFAULT_PRINCIPAL, &DEFAULT_GUARANTEE, &schedule);
+    let loan_id = t.client.create_loan(
+        &user,
+        &merchant,
+        &DEFAULT_PRINCIPAL,
+        &DEFAULT_GUARANTEE,
+        &schedule,
+    );
 
     // First accrual: 1 day after due_date (due_date = 0, now = SECONDS_PER_DAY)
     t.env.ledger().set_timestamp(SECONDS_PER_DAY);
@@ -2542,9 +2562,13 @@ fn test_repay_loan_auto_accrues_late_fees() {
     let schedule = t.single_installment(DEFAULT_TOTAL_DUE, due_date);
     t.env.ledger().set_timestamp(0);
     t.mint(&user, DEFAULT_GUARANTEE);
-    let loan_id = t
-        .client
-        .create_loan(&user, &merchant, &DEFAULT_PRINCIPAL, &DEFAULT_GUARANTEE, &schedule);
+    let loan_id = t.client.create_loan(
+        &user,
+        &merchant,
+        &DEFAULT_PRINCIPAL,
+        &DEFAULT_GUARANTEE,
+        &schedule,
+    );
 
     // Advance 1 day past due_date and attempt partial payment
     t.env.ledger().set_timestamp(due_date + SECONDS_PER_DAY);
@@ -2572,9 +2596,13 @@ fn test_full_repayment_including_late_fees_sets_paid() {
     let schedule = t.single_installment(DEFAULT_TOTAL_DUE, due_date);
     t.env.ledger().set_timestamp(0);
     t.mint(&user, DEFAULT_GUARANTEE);
-    let loan_id = t
-        .client
-        .create_loan(&user, &merchant, &DEFAULT_PRINCIPAL, &DEFAULT_GUARANTEE, &schedule);
+    let loan_id = t.client.create_loan(
+        &user,
+        &merchant,
+        &DEFAULT_PRINCIPAL,
+        &DEFAULT_GUARANTEE,
+        &schedule,
+    );
 
     t.env.ledger().set_timestamp(due_date + SECONDS_PER_DAY);
     t.client.apply_late_fees(&loan_id);
@@ -2603,9 +2631,13 @@ fn test_active_debt_includes_late_fees() {
     let schedule = t.single_installment(DEFAULT_TOTAL_DUE, due_date);
     t.env.ledger().set_timestamp(0);
     t.mint(&user, DEFAULT_GUARANTEE);
-    let loan_id = t
-        .client
-        .create_loan(&user, &merchant, &DEFAULT_PRINCIPAL, &DEFAULT_GUARANTEE, &schedule);
+    let loan_id = t.client.create_loan(
+        &user,
+        &merchant,
+        &DEFAULT_PRINCIPAL,
+        &DEFAULT_GUARANTEE,
+        &schedule,
+    );
 
     let debt_before = t.client.get_user_active_debt(&user);
 
@@ -2731,8 +2763,7 @@ fn test_reputation_call_failure_does_not_block_repayment() {
     t.mint(&user, total_due);
 
     // Revoke updater permission so the increase_score call will fail
-    t.reputation
-        .set_updater(&t.admin, &t.creditline_id, &false);
+    t.reputation.set_updater(&t.admin, &t.creditline_id, &false);
 
     // Repayment must still succeed despite the reputation call failure
     t.creditline.repay_loan(&user, &loan_id, &total_due);
