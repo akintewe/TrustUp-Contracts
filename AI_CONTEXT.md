@@ -125,7 +125,7 @@ cargo build -p <contract> --target wasm32-unknown-unknown --release
 # Output: target/wasm32-unknown-unknown/release/<contract>.wasm
 ```
 
-## Current State (2026-01-15)
+## Current State (2026-06-20)
 
 **Completed (Phase 1 & 2)**:
 - ✅ Reputation Contract fully implemented
@@ -135,18 +135,18 @@ cargo build -p <contract> --target wasm32-unknown-unknown --release
 - ✅ 10 comprehensive tests
 - ✅ CI/CD pipeline
 
-**Next Phase (Phase 3 - CreditLine)**:
-- ⏳ SC-08: Loan creation
-- ⏳ SC-09: Loan repayment
-- ⏳ SC-10: Loan default
+**Completed (Phase 3 - CreditLine)**:
+- ✅ SC-08: Loan creation
+- ✅ SC-09: Loan repayment (`repay_loan`, partial/full payments, `LoanStatus::Repaid`)
+- ✅ SC-10: Loan default
 
 **Contracts**:
 ```
 contracts/
 ├── reputation-contract/     ✅ Implemented (Phase 2)
-├── creditline-contract/     ⏳ Next (Phase 3)
-├── merchant-registry/       ⏳ Planned (Phase 5)
-└── liquidity-pool/          ⏳ Planned (Phase 6)
+├── creditline-contract/     ✅ Implemented (Phase 3)
+├── merchant-registry/       ✅ Implemented (Phase 5)
+└── liquidity-pool/          ✅ Implemented (Phase 6)
 ```
 
 ## Key Principles
