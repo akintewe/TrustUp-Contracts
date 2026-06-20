@@ -7,11 +7,10 @@ use parameters_contract::{
 use reputation_contract::{ReputationContract, ReputationContractClient};
 use soroban_sdk::token::StellarAssetClient;
 use soroban_sdk::{
-    contract, contractimpl,
-    symbol_short,
+    contract, contractimpl, symbol_short,
     testutils::{Address as _, Events, Ledger},
     token::Client as TokenClient,
-    Address, Env, String as SorobanString, Symbol, Val,
+    Address, Env, IntoVal, String as SorobanString, Symbol,
 };
 
 const DEFAULT_PRINCIPAL: i128 = 1_000;
@@ -1745,8 +1744,7 @@ fn test_invalid_merchant_registry_rejects_loan() {
     let merchant = Address::generate(&t.env);
     let invalid_registry = t.env.register(MockReputation, ());
 
-    t.client
-        .set_merchant_registry(&t.admin, &invalid_registry);
+    t.client.set_merchant_registry(&t.admin, &invalid_registry);
 
     let due_date = t.env.ledger().timestamp() + 10_000;
     let schedule = t.single_installment(1000, due_date);
