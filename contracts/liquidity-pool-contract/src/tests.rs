@@ -1,8 +1,9 @@
 use crate::{LiquidityPoolContract, LiquidityPoolContractClient};
 use soroban_sdk::{
-    testutils::Address as _,
+    symbol_short,
+    testutils::{Address as _, Events},
     token::{Client as TokenClient, StellarAssetClient},
-    Address, Env,
+    Address, Env, IntoVal, Symbol, Val, Vec,
 };
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -2447,4 +2448,214 @@ fn test_receive_guarantee_blocked_when_paused() {
     t.client().pause(&t.admin);
     t.mint(&t.creditline, 100);
     t.client().receive_guarantee(&t.creditline, &100);
+}
+
+// ─── distribute_interest public entrypoint (SC-17) ───────────────────────────
+
+#[test]
+fn test_distribute_interest_called_by_admin_splits_fees_correctly() {
+    let t = TestEnv::setup();
+    let provider = Address::generate(&t.env);
+    t.mint(&provider, 10_000);
+    t.client().deposit(&provider, &10_000);
+
+    t.mint(&t.contract_id, 1_000);
+    t.client().distribute_interest(&t.admin, &1_000);
+
+    let stats = t.client().get_pool_stats();
+    assert_eq!(stats.total_liquidity, 10_850);
+    assert_eq!(t.token().balance(&t.treasury), 100);
+    assert_eq!(t.token().balance(&t.merchant_fund), 50);
+}
+
+#[test]
+fn test_distribute_interest_called_by_creditline_splits_fees_correctly() {
+    let t = TestEnv::setup();
+    let provider = Address::generate(&t.env);
+    t.mint(&provider, 5_000);
+    t.client().deposit(&provider, &5_000);
+
+    t.mint(&t.contract_id, 200);
+    t.client().distribute_interest(&t.creditline, &200);
+
+    let stats = t.client().get_pool_stats();
+    assert_eq!(stats.total_liquidity, 5_170);
+    assert_eq!(t.token().balance(&t.treasury), 20);
+    assert_eq!(t.token().balance(&t.merchant_fund), 10);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #9)")]
+fn test_distribute_interest_unauthorized_caller_fails() {
+    let t = TestEnv::setup();
+    let intruder = Address::generate(&t.env);
+    t.client().distribute_interest(&intruder, &100);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #4)")]
+fn test_distribute_interest_zero_amount_fails() {
+    let t = TestEnv::setup();
+    t.client().distribute_interest(&t.admin, &0);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #4)")]
+fn test_distribute_interest_negative_amount_fails() {
+    let t = TestEnv::setup();
+    t.client().distribute_interest(&t.admin, &-500);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #12)")]
+fn test_distribute_interest_blocked_when_paused() {
+    let t = TestEnv::setup();
+    t.client().pause(&t.admin);
+    t.mint(&t.contract_id, 100);
+    t.client().distribute_interest(&t.admin, &100);
+}
+
+#[test]
+fn test_distribute_interest_admin_and_creditline_both_authorized() {
+    let t = TestEnv::setup();
+    let provider = Address::generate(&t.env);
+    t.mint(&provider, 10_000);
+    t.client().deposit(&provider, &10_000);
+
+    t.mint(&t.contract_id, 100);
+    t.client().distribute_interest(&t.admin, &100);
+    assert_eq!(t.client().get_pool_stats().total_liquidity, 10_085);
+
+    t.mint(&t.contract_id, 100);
+    t.client().distribute_interest(&t.creditline, &100);
+    assert_eq!(t.client().get_pool_stats().total_liquidity, 10_170);
+}
+
+#[test]
+fn test_distribute_interest_increases_share_price() {
+    let t = TestEnv::setup();
+    let provider = Address::generate(&t.env);
+    t.mint(&provider, 1_000);
+    t.client().deposit(&provider, &1_000);
+
+    let before = t.client().get_pool_stats();
+    assert_eq!(before.share_price, 10_000);
+
+    t.mint(&t.contract_id, 100);
+    t.client().distribute_interest(&t.admin, &100);
+
+    let after = t.client().get_pool_stats();
+    // lp_amount = 85 → total_liquidity = 1085 → share_price = 10850 bps
+    assert_eq!(after.share_price, 10_850);
+    assert!(after.share_price > before.share_price);
+}
+
+#[test]
+fn test_distribute_interest_lp_portion_stays_in_pool() {
+    // 85% of interest never leaves the contract — only total_liquidity accounting increases.
+    let t = TestEnv::setup();
+    let provider = Address::generate(&t.env);
+    t.mint(&provider, 2_000);
+    t.client().deposit(&provider, &2_000);
+
+    t.mint(&t.contract_id, 500);
+
+    let contract_balance_before = t.token().balance(&t.contract_id);
+    t.client().distribute_interest(&t.admin, &500);
+    let contract_balance_after = t.token().balance(&t.contract_id);
+
+    // 85% of 500 = 425 stayed in pool; only 75 (15%) transferred out
+    let lp_amount = 500i128 * 8500 / 10000; // 425
+    let expected_outflow = 500 - lp_amount; // 75
+    assert_eq!(contract_balance_before - contract_balance_after, expected_outflow);
+}
+
+#[test]
+fn test_distribute_interest_multiple_calls_compound_share_value() {
+    // Repeated distribute_interest calls should linearly increase total_liquidity.
+    let t = TestEnv::setup();
+    let provider = Address::generate(&t.env);
+    t.mint(&provider, 1_000);
+    t.client().deposit(&provider, &1_000);
+
+    for _ in 0..3 {
+        t.mint(&t.contract_id, 100);
+        t.client().distribute_interest(&t.admin, &100);
+    }
+
+    // After 3 calls: 1000 + 3*85 = 1255; share_price = 12550
+    let stats = t.client().get_pool_stats();
+    assert_eq!(stats.total_liquidity, 1_255);
+    assert_eq!(stats.share_price, 12_550);
+}
+
+#[test]
+fn test_distribute_interest_proportional_to_multiple_lps() {
+    // Each LP's share value must increase proportionally regardless of
+    // how many providers are in the pool.
+    let t = TestEnv::setup();
+    let provider_a = Address::generate(&t.env);
+    let provider_b = Address::generate(&t.env);
+    let provider_c = Address::generate(&t.env);
+
+    for p in [&provider_a, &provider_b, &provider_c] {
+        t.mint(p, 1_000);
+        t.client().deposit(p, &1_000);
+    }
+
+    // Distribute 300 tokens: lp = 255 stays in pool
+    t.mint(&t.contract_id, 300);
+    t.client().distribute_interest(&t.admin, &300);
+
+    // total_liquidity = 3255, total_shares = 3000
+    // Each LP (1000 shares of 3000): 1000 * 3255 / 3000 = 1085
+    let val = t.client().calculate_withdrawal(&1_000);
+    assert_eq!(val, 1_085);
+}
+
+#[test]
+fn test_distribute_interest_emits_interest_distributed_event() {
+    let t = TestEnv::setup();
+    let provider = Address::generate(&t.env);
+    t.mint(&provider, 1_000);
+    t.client().deposit(&provider, &1_000);
+
+    t.mint(&t.contract_id, 100);
+    t.client().distribute_interest(&t.admin, &100);
+
+    let events: Vec<(Address, Vec<Val>, Val)> = t.env.events().all();
+    let mut found_event = false;
+    for event in events.iter() {
+        let topics = event.1.clone();
+        if let Some(first) = topics.get(0) {
+            let sym: Symbol = first.into_val(&t.env);
+            if sym == symbol_short!("LQINTDST") {
+                found_event = true;
+                // Verify all four fields: (total, lp, protocol, merchant)
+                let data: (i128, i128, i128, i128) = event.2.into_val(&t.env);
+                assert_eq!(data.0, 100); // total_interest
+                assert_eq!(data.1, 85);  // lp_amount (85%)
+                assert_eq!(data.2, 10);  // protocol_amount (10%)
+                assert_eq!(data.3, 5);   // merchant_amount (5%)
+                break;
+            }
+        }
+    }
+    assert!(found_event, "InterestDistributed (LQINTDST) event must be emitted");
+}
+
+#[test]
+fn test_distribute_interest_rounding_remainder_to_merchant() {
+    // 101 tokens: lp=85 (floor), protocol=10 (floor), merchant=6 (remainder avoids dust)
+    let t = TestEnv::setup();
+    let provider = Address::generate(&t.env);
+    t.mint(&provider, 10_000);
+    t.client().deposit(&provider, &10_000);
+
+    t.mint(&t.contract_id, 101);
+    t.client().distribute_interest(&t.admin, &101);
+
+    assert_eq!(t.token().balance(&t.treasury), 10);
+    // remainder = 101 - 85 - 10 = 6 goes to merchant (no dust lost to rounding)
+    assert_eq!(t.token().balance(&t.merchant_fund), 6);
 }
