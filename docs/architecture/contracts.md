@@ -51,110 +51,82 @@ pub fn decrease_score(env: Env, updater: Address, user: Address, amount: u32)
 
 ---
 
-## CreditLine Contract ⏳
+## CreditLine Contract ✅
 
-**Status**: In development
+**Status**: Implemented and tested
 
-**Purpose**: Manage loan creation, repayment, and defaults
+**Purpose**: Manage loan creation, repayment, defaults, and late fees
 
-### Planned Architecture
+### Architecture
 
-**State**:
+**Loan status**:
 ```rust
-pub enum DataKey {
-    // Instance storage
-    Admin,
-    ReputationContract,
-    LiquidityPoolContract,
-    MerchantRegistryContract,
-
-    // Persistent storage
-    Loan(u64),              // LoanId → LoanInfo
-    UserLoans(Address),     // Address → Vec<u64>
-    NextLoanId,             // Counter for loan IDs
-
-    // Temporary storage
-    CachedRate(Address),    // Address → interest rate
-}
-
-#[contracttype]
-pub struct LoanInfo {
-    pub borrower: Address,
-    pub merchant: Address,
-    pub principal: i128,
-    pub interest_rate: u32,  // Basis points (e.g., 800 = 8%)
-    pub guarantee: i128,
-    pub due_date: u64,
-    pub status: LoanStatus,
-    pub repaid_amount: i128,
-}
-
-#[contracttype]
 pub enum LoanStatus {
+    Pending,
     Active,
     Repaid,
     Defaulted,
+    Cancelled,
 }
 ```
 
-**Public API** (planned):
+**Public API**:
 ```rust
-// Admin functions
-pub fn initialize(
-    env: Env,
-    admin: Address,
-    reputation_contract: Address,
-    pool_contract: Address,
-    merchant_registry: Address,
-)
+// Admin / configuration
+pub fn initialize(env: Env, admin: Address, token: Address, reputation_contract: Address)
+pub fn set_reputation_contract(env: Env, admin: Address, address: Address)
+pub fn set_merchant_registry(env: Env, admin: Address, address: Address)
+pub fn set_liquidity_pool(env: Env, admin: Address, address: Address)
+pub fn set_parameters_contract(env: Env, admin: Address, address: Address)
 
 // Loan operations
 pub fn create_loan(
     env: Env,
-    borrower: Address,
+    user: Address,
     merchant: Address,
-    amount: i128,
-    guarantee: i128,
-    due_date: u64,
+    total_amount: i128,
+    guarantee_amount: i128,
+    repayment_schedule: Vec<RepaymentInstallment>,
 ) -> u64
 
-pub fn repay_loan(env: Env, borrower: Address, loan_id: u64, amount: i128)
-
-pub fn mark_defaulted(env: Env, loan_id: u64)
+pub fn request_loan(...) -> u64
+pub fn repay_loan(env: Env, borrower: Address, loan_id: u64, amount: i128) -> i128
+pub fn cancel_loan(env: Env, caller: Address, loan_id: u64)
+pub fn mark_defaulted(env: Env, loan_id: u64) -> Result<(), CreditLineError>
+pub fn apply_late_fees(env: Env, loan_id: u64)
+pub fn warn_grace_period(env: Env, loan_id: u64) -> Result<(), CreditLineError>
 
 // Queries
-pub fn get_loan(env: Env, loan_id: u64) -> LoanInfo
-pub fn get_user_loans(env: Env, user: Address) -> Vec<u64>
+pub fn get_loan(env: Env, loan_id: u64) -> Loan
+pub fn get_user_loans(env: Env, borrower: Address, start: u64, limit: u32) -> Vec<Loan>
+pub fn get_user_loan_count(env: Env, borrower: Address) -> u64
+pub fn get_user_active_debt(env: Env, borrower: Address) -> i128
 ```
 
 **Business Logic**:
 
 1. **Loan Creation**:
-   - Validate merchant is active (check MerchantRegistry)
-   - Check borrower reputation (query Reputation contract)
-   - Calculate interest rate based on reputation tier
-   - Validate guarantee ≥ 20% of amount
-   - Request funds from Liquidity Pool
-   - Transfer to merchant
-   - Store loan info
+   - Validate merchant is active (MerchantRegistry)
+   - Check borrower reputation and liquidity availability
+   - Fund loan from Liquidity Pool and store loan as `Active`
    - Emit loan created event
 
-2. **Repayment**:
-   - Validate loan exists and is active
-   - Validate borrower authorization
-   - Apply payment to principal + interest
-   - Transfer funds to Liquidity Pool
+2. **Repayment** (`repay_loan`):
+   - Validate loan exists and is `Active`
+   - Validate borrower authorization and repayment amount
+   - Accrue outstanding late fees before applying payment
+   - Apply payment priority: principal → interest → service fee → late fees
+   - Transfer repayment to Liquidity Pool via `receive_repayment`
    - If fully repaid:
-     - Return guarantee to borrower
-     - Mark loan as Repaid
-     - Increase reputation score
-   - Emit repayment event
+     - Transition loan to `Repaid`
+     - Refund guarantee to borrower
+     - Increase reputation score (+10 on time, +15 early)
+   - Emit `LoanRepaid` event (`LOANRPD`)
 
 3. **Default**:
-   - Validate loan is overdue
-   - Transfer guarantee to Liquidity Pool (loss mitigation)
-   - Mark loan as Defaulted
-   - Decrease reputation score significantly
+   - Validate loan is overdue and still `Active`
+   - Transfer guarantee to Liquidity Pool
+   - Mark loan as `Defaulted` and decrease reputation score
    - Emit default event
 
 **Cross-Contract Interactions**:
@@ -167,7 +139,7 @@ create_loan:
 
 repay_loan:
     → LiquidityPool.receive_repayment(amount)
-    → Reputation.increase_score(borrower, +10)
+    → Reputation.increase_score(borrower, +10 or +15)
 
 mark_defaulted:
     → LiquidityPool.receive_guarantee(guarantee)
