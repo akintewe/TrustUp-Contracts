@@ -203,7 +203,7 @@ Handles loan creation, repayment, default management, per-user active debt caps,
 **Implementation:**
 - ✅ `repay_loan()` supports partial and full repayments
 - ✅ Remaining balance and per-component debt tracking (`principal`, `interest`, `service fee`)
-- ✅ Full repayment transitions loan to `Paid`
+- ✅ Full repayment transitions loan to `Repaid`
 - ✅ Escrowed guarantee is refunded on successful completion
 - ✅ Repayments are forwarded through the liquidity-pool interface
 - ✅ `LoanRepaid` events emitted
@@ -505,16 +505,6 @@ Comprehensive test coverage for all contracts.
    - [ ] Security audit preparation
    - [ ] Gas optimization
    - [ ] Documentation updates
-
----
-
-## Unplanned Contracts
-
-### adapter-trustless-contract
-
-**Status:** Empty (`.gitkeep` only)
-**Purpose:** Unknown — not in original roadmap
-**Action Required:** Clarify scope or remove
 
 ---
 

@@ -15,7 +15,8 @@ pub struct PoolStats {
 // Fee split constants (basis points, sum = 10000)
 pub const LP_FEE_BPS: i128 = 8500; // 85% to liquidity providers
 pub const PROTOCOL_FEE_BPS: i128 = 1000; // 10% to protocol treasury
-pub const MERCHANT_FEE_BPS: i128 = 500; // 5% to merchant incentive fund
+#[allow(dead_code)]
+pub const MERCHANT_FEE_BPS: i128 = 500; // 5% to merchant incentive fund (used as remainder to avoid rounding loss)
 pub const TOTAL_BPS: i128 = 10000;
 
 /// Minimum deposit / withdrawal to prevent rounding exploits

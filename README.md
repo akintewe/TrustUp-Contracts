@@ -242,13 +242,13 @@ Manages user credit scores (0-100) with role-based access control.
 **Tests**: 37 passing
 **Functions**: `get_score`, `increase_score`, `decrease_score`, `set_admin`, `set_updater`
 
-### ⏳ CreditLine Contract (In Progress)
+### ✅ CreditLine Contract (Complete)
 
 Handles loan creation, repayment, and default management.
 
-**Status**: Partial implementation
-**Progress**: 67% complete (2/3 issues)
-**Remaining**: Loan repayment functionality
+**Status**: Implemented
+**Progress**: SC-08 (loan creation), SC-09 (loan repayment), SC-10 (loan default) complete
+**Functions**: `create_loan`, `request_loan`, `repay_loan`, `mark_defaulted`, `cancel_loan`, `apply_late_fees`
 
 ### ⏳ Merchant Registry (Planned)
 
