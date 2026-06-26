@@ -2835,3 +2835,137 @@ fn test_reputation_call_failure_does_not_block_repayment() {
     assert_eq!(t.reputation.get_score(&user), 60);
 }
 
+#[test]
+fn test_full_repayment_emits_reputation_updated_event() {
+    // Confirms that REPUPD event is emitted after a successful reputation increase.
+    let t = RealIntegrationCtx::setup();
+    let provider = Address::generate(&t.env);
+    let user = Address::generate(&t.env);
+    let merchant = Address::generate(&t.env);
+
+    t.fund_pool(&provider, 10_000);
+    t.register_merchant(&merchant, "Event Merchant");
+    t.set_score(&user, 60);
+    t.mint(&user, 1_300);
+
+    let due_date = 10_000_u64;
+    t.env.ledger().set_timestamp(1_000);
+    let schedule = t.single_installment(1_000, due_date);
+    let loan_id = t.creditline.create_loan(&user, &merchant, &1_000, &200, &schedule);
+
+    let loan = t.creditline.get_loan(&loan_id);
+    t.mint(&user, loan.remaining_balance);
+
+    // Pay before due_date → early repayment (+15)
+    t.env.ledger().set_timestamp(2_000);
+    t.creditline.repay_loan(&user, &loan_id, &loan.remaining_balance);
+
+    // Verify REPUPD event was emitted with correct payload
+    let events: Vec<(Address, Vec<Val>, Val)> = t.env.events().all();
+    let mut found = false;
+    for event in events.iter() {
+        let topics = event.1.clone();
+        if let Some(first) = topics.get(0) {
+            let sym: Symbol = first.into_val(&t.env);
+            if sym == symbol_short!("REPUPD") {
+                found = true;
+                // data: (score_delta: u32, increase: bool, timestamp: u64)
+                let data: (u32, bool, u64) = event.2.into_val(&t.env);
+                assert_eq!(
+                    data.0,
+                    crate::types::REPUTATION_INCREMENT_EARLY,
+                    "early repayment must use REPUTATION_INCREMENT_EARLY constant"
+                );
+                assert!(data.1, "increase flag must be true for repayment reward");
+                break;
+            }
+        }
+    }
+    assert!(found, "REPUPD event must be emitted on successful reputation increase");
+}
+
+#[test]
+fn test_on_time_repayment_uses_increment_on_time_constant() {
+    // Confirms the on-time path uses the named constant, not a magic number.
+    let t = RealIntegrationCtx::setup();
+    let provider = Address::generate(&t.env);
+    let user = Address::generate(&t.env);
+    let merchant = Address::generate(&t.env);
+
+    t.fund_pool(&provider, 10_000);
+    t.register_merchant(&merchant, "OT Merchant");
+    t.set_score(&user, 60); // score 60 → credit_limit 2500, enough for 1000 loan
+    t.mint(&user, 1_300);
+
+    let due_date = 5_000_u64;
+    let schedule = t.single_installment(1_000, due_date);
+    let loan_id = t.creditline.create_loan(&user, &merchant, &1_000, &200, &schedule);
+
+    let loan = t.creditline.get_loan(&loan_id);
+    t.mint(&user, loan.remaining_balance);
+
+    // Pay at exactly the due date → not early
+    t.env.ledger().set_timestamp(due_date);
+    t.creditline.repay_loan(&user, &loan_id, &loan.remaining_balance);
+
+    let expected = 60 + crate::types::REPUTATION_INCREMENT_ON_TIME;
+    assert_eq!(t.reputation.get_score(&user), expected);
+}
+
+#[test]
+fn test_default_decreases_score_while_full_repayment_increases_score() {
+    // SC-11 + SC-12 coexistence: verify both paths work independently
+    // on two different borrowers in the same pool.
+    let t = RealIntegrationCtx::setup();
+    let provider = Address::generate(&t.env);
+    let good_user = Address::generate(&t.env);
+    let bad_user = Address::generate(&t.env);
+    let merchant = Address::generate(&t.env);
+
+    t.fund_pool(&provider, 20_000);
+    t.register_merchant(&merchant, "Dual Merchant");
+    t.set_score(&good_user, 60);
+    t.set_score(&bad_user, 60);
+
+    // Both users create loans
+    let due_date = 5_000_u64;
+    t.env.ledger().set_timestamp(1_000);
+
+    t.mint(&good_user, 1_300);
+    let good_schedule = t.single_installment(1_000, due_date);
+    let good_loan_id = t
+        .creditline
+        .create_loan(&good_user, &merchant, &1_000, &200, &good_schedule);
+
+    t.mint(&bad_user, 1_300);
+    let bad_schedule = t.single_installment(1_000, due_date);
+    let bad_loan_id = t
+        .creditline
+        .create_loan(&bad_user, &merchant, &1_000, &200, &bad_schedule);
+
+    // Good user repays on time
+    let good_loan = t.creditline.get_loan(&good_loan_id);
+    t.mint(&good_user, good_loan.remaining_balance);
+    t.env.ledger().set_timestamp(due_date);
+    t.creditline
+        .repay_loan(&good_user, &good_loan_id, &good_loan.remaining_balance);
+
+    // Bad user defaults (advance past grace period)
+    let params = default_parameters();
+    let grace_end = due_date + params.grace_period_seconds + 1;
+    t.env.ledger().set_timestamp(grace_end);
+    t.creditline.mark_defaulted(&bad_loan_id);
+
+    // SC-11: good user's score increased by REPUTATION_INCREMENT_ON_TIME
+    assert_eq!(
+        t.reputation.get_score(&good_user),
+        60 + crate::types::REPUTATION_INCREMENT_ON_TIME,
+        "full repayment must increase score by the named constant"
+    );
+
+    // SC-12: bad user's score decreased (default penalty applied)
+    assert!(
+        t.reputation.get_score(&bad_user) < 60,
+        "default must decrease reputation score"
+    );
+}
